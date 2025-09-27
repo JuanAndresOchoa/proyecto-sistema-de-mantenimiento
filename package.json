@@ -1,9 +1,9 @@
 {
-  "name": "maintenance-app",
+  "name": "sistema de control de mantenimiento",
   "version": "0.1.0",
   "private": true,
   "main": "main/main.js",
-  "author": "Maintenance App Team",
+  "author": "Juan Ochoa ochoachavarriajuan@gmail.com",
   "description": "Sistema de gestión de mantenimiento industrial",
   "homepage": "./",
   "scripts": {
