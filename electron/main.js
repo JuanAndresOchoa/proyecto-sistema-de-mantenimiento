@@ -1,220 +1,140 @@
-const { app, BrowserWindow, ipcMain, dialog } = require("electron")
-const path = require("path")
-const isDev = require("electron-is-dev")
-const Database = require("better-sqlite3")
-const fs = require("fs")
+// electron/main.js
+// Proceso principal de Electron: crea la ventana y expone handlers IPC
+const { app, BrowserWindow, ipcMain } = require('electron');
+const path = require('path');
+const isDev = process.env.NODE_ENV !== 'production';
 
-let mainWindow
-let db
+// Importa la capa de DB (asegurate que electron/db.js exista)
+const { runQuery, getQuery, allQuery } = require('./db');
 
-// Inicializar base de datos
-function initDatabase() {
-  const dbPath = path.join(app.getPath("userData"), "mantenimiento.db")
-
-  try {
-    db = new Database(dbPath)
-
-    // Configurar WAL mode para mejor rendimiento
-    db.pragma("journal_mode = WAL")
-
-    // Crear tablas si no existen
-    createTables()
-
-    console.log("Base de datos inicializada correctamente")
-  } catch (error) {
-    console.error("Error al inicializar la base de datos:", error)
-    dialog.showErrorBox("Error de Base de Datos", "No se pudo inicializar la base de datos: " + error.message)
-  }
-}
-
-function createTables() {
-  const createTablesSQL = `
-    -- Tabla de equipos
-    CREATE TABLE IF NOT EXISTS equipos (
-      id TEXT PRIMARY KEY,
-      nombre TEXT NOT NULL,
-      tipo TEXT NOT NULL,
-      ubicacion TEXT NOT NULL,
-      estado TEXT NOT NULL DEFAULT 'Operativo',
-      fechaInstalacion TEXT NOT NULL,
-      proximoMantenimiento TEXT,
-      horasOperacion INTEGER DEFAULT 0,
-      eficiencia REAL DEFAULT 100.0,
-      createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
-      updatedAt TEXT DEFAULT CURRENT_TIMESTAMP
-    );
-
-    -- Tabla de mantenimientos
-    CREATE TABLE IF NOT EXISTS mantenimientos (
-      id TEXT PRIMARY KEY,
-      equipoId TEXT NOT NULL,
-      tipo TEXT NOT NULL,
-      descripcion TEXT NOT NULL,
-      fechaProgramada TEXT NOT NULL,
-      fechaCompletado TEXT,
-      tecnico TEXT NOT NULL,
-      prioridad TEXT NOT NULL DEFAULT 'Media',
-      estado TEXT NOT NULL DEFAULT 'Programado',
-      observaciones TEXT,
-      tiempoEstimado INTEGER,
-      tiempoReal INTEGER,
-      materiales TEXT,
-      herramientas TEXT,
-      procedimientos TEXT,
-      repuestos TEXT,
-      frecuencia TEXT,
-      createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
-      updatedAt TEXT DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (equipoId) REFERENCES equipos (id)
-    );
-
-    -- Tabla de costos
-    CREATE TABLE IF NOT EXISTS costos (
-      id TEXT PRIMARY KEY,
-      mantenimientoId TEXT NOT NULL,
-      categoria TEXT NOT NULL,
-      concepto TEXT NOT NULL,
-      monto REAL NOT NULL,
-      proveedor TEXT,
-      fecha TEXT NOT NULL,
-      observaciones TEXT,
-      createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
-      updatedAt TEXT DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (mantenimientoId) REFERENCES mantenimientos (id)
-    );
-
-    -- Tabla de órdenes de trabajo
-    CREATE TABLE IF NOT EXISTS ordenes_trabajo (
-      id TEXT PRIMARY KEY,
-      numero TEXT UNIQUE NOT NULL,
-      titulo TEXT NOT NULL,
-      descripcion TEXT NOT NULL,
-      equipoId TEXT NOT NULL,
-      tipoTrabajo TEXT NOT NULL,
-      prioridad TEXT NOT NULL DEFAULT 'Media',
-      estado TEXT NOT NULL DEFAULT 'Abierta',
-      solicitante TEXT NOT NULL,
-      tecnicoAsignado TEXT,
-      departamento TEXT,
-      area TEXT,
-      ubicacion TEXT,
-      fechaCreacion TEXT NOT NULL,
-      fechaAsignacion TEXT,
-      fechaInicio TEXT,
-      fechaCompletado TEXT,
-      tiempoEstimado INTEGER,
-      tiempoReal INTEGER,
-      costoEstimado REAL,
-      costoReal REAL,
-      materiales TEXT,
-      herramientas TEXT,
-      procedimientos TEXT,
-      observaciones TEXT,
-      createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
-      updatedAt TEXT DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (equipoId) REFERENCES equipos (id)
-    );
-
-    -- Tabla de alertas
-    CREATE TABLE IF NOT EXISTS alertas (
-      id TEXT PRIMARY KEY,
-      tipo TEXT NOT NULL,
-      titulo TEXT NOT NULL,
-      descripcion TEXT NOT NULL,
-      nivel TEXT NOT NULL DEFAULT 'Info',
-      estado TEXT NOT NULL DEFAULT 'Activa',
-      equipoId TEXT,
-      fechaCreacion TEXT NOT NULL,
-      fechaLeida TEXT,
-      fechaResuelta TEXT,
-      createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
-      updatedAt TEXT DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (equipoId) REFERENCES equipos (id)
-    );
-
-    -- Tabla de áreas de la empresa
-    CREATE TABLE IF NOT EXISTS areas_empresa (
-      id TEXT PRIMARY KEY,
-      nombre TEXT NOT NULL UNIQUE,
-      descripcion TEXT,
-      responsable TEXT,
-      activo INTEGER DEFAULT 1,
-      createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
-      updatedAt TEXT DEFAULT CURRENT_TIMESTAMP
-    );
-
-    -- Índices para mejor rendimiento
-    CREATE INDEX IF NOT EXISTS idx_equipos_estado ON equipos(estado);
-    CREATE INDEX IF NOT EXISTS idx_mantenimientos_equipo ON mantenimientos(equipoId);
-    CREATE INDEX IF NOT EXISTS idx_mantenimientos_estado ON mantenimientos(estado);
-    CREATE INDEX IF NOT EXISTS idx_costos_mantenimiento ON costos(mantenimientoId);
-    CREATE INDEX IF NOT EXISTS idx_ordenes_estado ON ordenes_trabajo(estado);
-    CREATE INDEX IF NOT EXISTS idx_ordenes_equipo ON ordenes_trabajo(equipoId);
-    CREATE INDEX IF NOT EXISTS idx_alertas_estado ON alertas(estado);
-  `
-
-  db.exec(createTablesSQL)
-}
+let mainWindow;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
-    minWidth: 1200,
-    minHeight: 800,
+    width: 1200,
+    height: 800,
     webPreferences: {
-      nodeIntegration: false,
       contextIsolation: true,
-      enableRemoteModule: false,
-      preload: path.join(__dirname, "preload.js"),
-    },
-    icon: path.join(__dirname, "assets", "icon.png"),
-    show: false,
-    titleBarStyle: "default",
-  })
-
-  const startUrl = isDev ? "http://localhost:3000" : `file://${path.join(__dirname, "../out/index.html")}`
-
-  mainWindow.loadURL(startUrl)
-
-  mainWindow.once("ready-to-show", () => {
-    mainWindow.show()
-  })
+      preload: path.join(__dirname, 'preload.js'),
+      nodeIntegration: false
+    }
+  });
 
   if (isDev) {
-    mainWindow.webContents.openDevTools()
+    mainWindow.webContents.openDevTools({ mode: 'detach' });
   }
 
-  mainWindow.on("closed", () => {
-    mainWindow = null
-  })
+  const startUrl = process.env.ELECTRON_START_URL || 'http://localhost:3000';
+  console.log('Main -> loading URL:', startUrl);
+
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    console.error('Main -> did-fail-load', { errorCode, errorDescription, validatedURL });
+  });
+  mainWindow.webContents.on('crashed', () => {
+    console.error('Main -> Renderer process crashed');
+  });
+  mainWindow.on('unresponsive', () => {
+    console.error('Main -> Window unresponsive');
+  });
+
+  mainWindow.loadURL(startUrl).catch(err => console.error('Main -> loadURL error', err));
 }
 
 app.whenReady().then(() => {
-  initDatabase()
-  createWindow()
+  createWindow();
 
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow()
-    }
-  })
-})
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+});
 
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    if (db) {
-      db.close()
-    }
-    app.quit()
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
+});
+
+/* --------------------
+   Sanitización y util
+   -------------------- */
+function sanitizeParam(p) {
+  if (p === undefined) return null;
+  if (p === null) return null;
+  if (typeof p === 'number' || typeof p === 'bigint' || typeof p === 'string') return p;
+  if (Buffer.isBuffer(p)) return p;
+  if (p instanceof Date) return p.toISOString(); // o p.getTime() si prefieres INTEGER
+  if (typeof p === 'boolean') return p ? 1 : 0;
+  if (Array.isArray(p) || typeof p === 'object') {
+    try { return JSON.stringify(p); } catch (e) { return String(p); }
   }
-})
+  return String(p);
+}
+function sanitizeParams(arr) {
+  if (!arr) return [];
+  if (!Array.isArray(arr)) arr = [arr];
+  return arr.map(sanitizeParam);
+}
 
-app.on("before-quit", () => {
-  if (db) {
-    db.close()
+function safeInvokeSyncOrAsync(fn, ...args) {
+  // runQuery/getQuery/allQuery pueden ser sync o async; normalizamos a Promise
+  try {
+    const res = fn(...args);
+    return Promise.resolve(res);
+  } catch (err) {
+    return Promise.reject(err);
   }
-})
+}
 
-// IPC Handlers para operaciones de base de datos
-require("./database-handlers")(ipcMain, db)
+/* --------------------
+   IPC handlers para DB
+   - db-run  -> stmt.run(...)
+   - db-get  -> stmt.get(...)
+   - db-all  -> stmt.all(...)
+   -------------------- */
+ipcMain.handle('db-run', async (event, sql, params) => {
+  try {
+    if (typeof sql !== 'string') throw new Error('SQL debe ser string');
+    const cleanParams = sanitizeParams(params);
+    if (isDev) {
+      // útil para debugging local en Electron
+      console.debug('IPC db-run ->', { sql, params: cleanParams });
+    }
+    const res = await safeInvokeSyncOrAsync(runQuery, sql, cleanParams);
+    return { ok: true, result: res };
+  } catch (err) {
+    console.error('IPC db-run error:', err, 'SQL:', sql, 'params:', params);
+    return { ok: false, error: String(err) };
+  }
+});
+
+ipcMain.handle('db-get', async (event, sql, params) => {
+  try {
+    if (typeof sql !== 'string') throw new Error('SQL debe ser string');
+    const cleanParams = sanitizeParams(params);
+    if (isDev) console.debug('IPC db-get ->', { sql, params: cleanParams });
+    const row = await safeInvokeSyncOrAsync(getQuery, sql, cleanParams);
+    return { ok: true, row };
+  } catch (err) {
+    console.error('IPC db-get error:', err, 'SQL:', sql, 'params:', params);
+    return { ok: false, error: String(err) };
+  }
+});
+
+ipcMain.handle('db-all', async (event, sql, params) => {
+  try {
+    if (typeof sql !== 'string') throw new Error('SQL debe ser string');
+    const cleanParams = sanitizeParams(params);
+    if (isDev) console.debug('IPC db-all ->', { sql, params: cleanParams });
+    const rows = await safeInvokeSyncOrAsync(allQuery, sql, cleanParams);
+    return { ok: true, rows };
+  } catch (err) {
+    console.error('IPC db-all error:', err, 'SQL:', sql, 'params:', params);
+    return { ok: false, error: String(err) };
+  }
+});
+
+// Logs y errores desde renderer (opcional util)
+ipcMain.on('renderer-log', (e, ...args) => {
+  console.log('Renderer log ->', ...args);
+});
+ipcMain.on('renderer-error', (e, info) => {
+  console.error('Renderer forwarded error ->', info);
+});

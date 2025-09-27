@@ -1,45 +1,36 @@
-const { contextBridge, ipcRenderer } = require("electron")
+// electron/preload.js
+// Expone una API segura al renderer (contextBridge).
+const { contextBridge, ipcRenderer } = require('electron');
 
-// Exponer APIs seguras al renderer process
-contextBridge.exposeInMainWorld("electronAPI", {
-  // Equipos
-  getEquipos: () => ipcRenderer.invoke("get-equipos"),
-  createEquipo: (equipo) => ipcRenderer.invoke("create-equipo", equipo),
-  updateEquipo: (id, equipo) => ipcRenderer.invoke("update-equipo", id, equipo),
-  deleteEquipo: (id) => ipcRenderer.invoke("delete-equipo", id),
+// Reenvía errores no atrapados del renderer al main (útil para debugging)
+try {
+  window.addEventListener('error', (ev) => {
+    try { ipcRenderer.send('renderer-error', { message: ev.message, stack: ev.error?.stack }); } catch (e) {}
+  });
+  window.addEventListener('unhandledrejection', (ev) => {
+    try { ipcRenderer.send('renderer-error', { message: ev.reason?.message || String(ev.reason), stack: ev.reason?.stack }); } catch (e) {}
+  });
+} catch (e) {
+  // en caso de que window no esté disponible por alguna razón no crítica en preload
+}
 
-  // Mantenimientos
-  getMantenimientos: () => ipcRenderer.invoke("get-mantenimientos"),
-  createMantenimiento: (mantenimiento) => ipcRenderer.invoke("create-mantenimiento", mantenimiento),
-  updateMantenimiento: (id, mantenimiento) => ipcRenderer.invoke("update-mantenimiento", id, mantenimiento),
-  deleteMantenimiento: (id) => ipcRenderer.invoke("delete-mantenimiento", id),
+/**
+ * Helper: normaliza params para que siempre sea un array.
+ * Si el caller pasa un único valor, lo convertimos a [value].
+ */
+function normalizeParams(params) {
+  if (params === undefined || params === null) return [];
+  return Array.isArray(params) ? params : [params];
+}
 
-  // Costos
-  getCostos: () => ipcRenderer.invoke("get-costos"),
-  createCosto: (costo) => ipcRenderer.invoke("create-costo", costo),
-  updateCosto: (id, costo) => ipcRenderer.invoke("update-costo", id, costo),
-  deleteCosto: (id) => ipcRenderer.invoke("delete-costo", id),
+contextBridge.exposeInMainWorld('electronAPI', {
+  // DB: las llamadas devuelven la estructura { ok: boolean, ... }
+  dbRun: (sql, params) => ipcRenderer.invoke('db-run', sql, normalizeParams(params)),
+  dbGet: (sql, params) => ipcRenderer.invoke('db-get', sql, normalizeParams(params)),
+  dbAll: (sql, params) => ipcRenderer.invoke('db-all', sql, normalizeParams(params)),
 
-  // Órdenes de trabajo
-  getOrdenesTrabajos: () => ipcRenderer.invoke("get-ordenes-trabajo"),
-  createOrdenTrabajo: (orden) => ipcRenderer.invoke("create-orden-trabajo", orden),
-  updateOrdenTrabajo: (id, orden) => ipcRenderer.invoke("update-orden-trabajo", id, orden),
-  deleteOrdenTrabajo: (id) => ipcRenderer.invoke("delete-orden-trabajo", id),
-
-  // Alertas
-  getAlertas: () => ipcRenderer.invoke("get-alertas"),
-  createAlerta: (alerta) => ipcRenderer.invoke("create-alerta", alerta),
-  updateAlerta: (id, alerta) => ipcRenderer.invoke("update-alerta", id, alerta),
-  deleteAlerta: (id) => ipcRenderer.invoke("delete-alerta", id),
-
-  // Áreas de empresa
-  getAreasEmpresa: () => ipcRenderer.invoke("get-areas-empresa"),
-  createAreaEmpresa: (area) => ipcRenderer.invoke("create-area-empresa", area),
-  updateAreaEmpresa: (id, area) => ipcRenderer.invoke("update-area-empresa", id, area),
-  deleteAreaEmpresa: (id) => ipcRenderer.invoke("delete-area-empresa", id),
-
-  // Utilidades
-  generateNextOrderNumber: () => ipcRenderer.invoke("generate-next-order-number"),
-  getStatistics: () => ipcRenderer.invoke("get-statistics"),
-  exportData: (type, filters) => ipcRenderer.invoke("export-data", type, filters),
-})
+  // utilitarios
+  log: (...args) => {
+    try { ipcRenderer.send('renderer-log', ...args); } catch (e) {}
+  }
+});

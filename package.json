@@ -92,7 +92,7 @@
   },
   "build": {
     "appId": "com.maintenanceapp.app",
-    "productName": "Maintenance App",
+    "productName": "sistema de control de mantenimiento",
     "directories": {
       "output": "dist"
     },
