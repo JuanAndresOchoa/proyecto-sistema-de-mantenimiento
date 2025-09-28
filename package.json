@@ -10,6 +10,7 @@
     "dev": "concurrently -n \"NEXT,ELECTRON\" -c \"yellow,blue\" --kill-others \"next dev\" \"wait-on http://localhost:3000 && electron .\"",
     "build": "next build && npm run electron-build",
     "electron-build": "cross-env ELECTRON_BUILDER_ALLOW_UNRESOLVED_DEPENDENCIES=true CSC_IDENTITY_AUTO_DISCOVERY=false WIN_CSC_LINK= WIN_CSC_KEY_PASSWORD= electron-builder --publish=never",
+    "preelectron-build": "npm run rebuild",
     "start": "next start",
     "lint": "next lint",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
@@ -47,7 +48,6 @@
     "@radix-ui/react-toggle": "1.1.1",
     "@radix-ui/react-toggle-group": "1.1.1",
     "@radix-ui/react-tooltip": "1.1.6",
-    "autoprefixer": "^10.4.20",
     "better-sqlite3": "^9.2.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -70,12 +70,13 @@
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^0.9.9",
-    "zod": "3.25.67"
+    "zod": "3.25.67",
+    "autoprefixer": "^10.4.20"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.9",
-    "@types/better-sqlite3": "^7.6.8",
-    "@types/node": "^22",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^18",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "concurrently": "^8.2.2",
@@ -129,9 +130,10 @@
       "target": "AppImage"
     },
     "compression": "store",
-    "nodeGypRebuild": false,
+    "nodeGypRebuild": true,
     "buildDependenciesFromSource": false,
-    "npmRebuild": false,
+    "npmRebuild": true,
+    "npmRebuild": true,
     "publish": null,
     "generateUpdatesFilesForAllChannels": false
   }
