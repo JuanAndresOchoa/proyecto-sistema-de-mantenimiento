@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Plus, Search, Edit, Eye, Trash2, Zap } from "lucide-react"
 import { EquipoForm } from "./equipo-form"
 import { DialogCustom } from "@/components/ui/dialog-custom"
+import { useApp } from "@/contexts/app-context"
 
 interface Equipo {
   id: string
@@ -27,6 +28,14 @@ interface Equipo {
 }
 
 export function EquiposList() {
+  // Contexto (si existe)
+  const app = useApp() as any
+  const contextEquipos: Equipo[] = app?.equipos ?? []
+  const crearEquipoContext = app?.crearEquipo
+  const actualizarEquipoContext = app?.actualizarEquipo
+  const eliminarEquipoContext = app?.eliminarEquipo
+
+  // Filters / UI state
   const [searchTerm, setSearchTerm] = useState("")
   const [filterTipo, setFilterTipo] = useState("todos")
   const [filterEstado, setFilterEstado] = useState("todos")
@@ -41,93 +50,78 @@ export function EquiposList() {
     equipo: null,
   })
 
-  const [equipos, setEquipos] = useState<Equipo[]>([
-    {
-      id: "1",
-      codigo: "MOT-001",
-      nombre: "Motor Principal Línea A",
-      tipo: "Motor",
-      marca: "Siemens",
-      modelo: "IE3-1500",
-      ubicacion: "Planta Principal - Sector A",
-      estado: "Operativo",
-      criticidad: "Alta",
-      fechaInstalacion: "2020-03-15",
-      potencia: "15 HP",
-      voltaje: "440V",
-    },
-    {
-      id: "2",
-      codigo: "BOM-001",
-      nombre: "Bomba Centrífuga Agua",
-      tipo: "Bomba",
-      marca: "Grundfos",
-      modelo: "CR-45",
-      ubicacion: "Sala de Bombas",
-      estado: "Operativo",
-      criticidad: "Alta",
-      fechaInstalacion: "2019-08-22",
-      potencia: "5 HP",
-      voltaje: "220V",
-    },
-    {
-      id: "3",
-      codigo: "MOT-002",
-      nombre: "Motor Ventilador Extracción",
-      tipo: "Motor",
-      marca: "WEG",
-      modelo: "W22-1800",
-      ubicacion: "Área de Ventilación",
-      estado: "Operativo",
-      criticidad: "Media",
-      fechaInstalacion: "2021-01-10",
-      potencia: "3 HP",
-      voltaje: "220V",
-    },
-    {
-      id: "4",
-      codigo: "TRA-001",
-      nombre: "Transformador Principal",
-      tipo: "Transformador",
-      marca: "ABB",
-      modelo: "ONAN-500",
-      ubicacion: "Subestación Eléctrica",
-      estado: "Operativo",
-      criticidad: "Alta",
-      fechaInstalacion: "2018-05-30",
-      potencia: "500 KVA",
-      voltaje: "13.8KV/440V",
-    },
-    {
-      id: "5",
-      codigo: "BOM-002",
-      nombre: "Bomba Aceite Hidráulico",
-      tipo: "Bomba",
-      marca: "Rexroth",
-      modelo: "A10V-28",
-      ubicacion: "Taller Mecánico",
-      estado: "Mantenimiento",
-      criticidad: "Media",
-      fechaInstalacion: "2020-11-18",
-      potencia: "2 HP",
-      voltaje: "220V",
-    },
-  ])
+  // Estado local (fallback si context no provee)
+  const [equipos, setEquipos] = useState<Equipo[]>([])
 
-  const handleSaveEquipo = (equipoData: Omit<Equipo, "id">) => {
-    if (editingEquipo) {
-      setEquipos((prev) =>
-        prev.map((eq) => (eq.id === editingEquipo.id ? { ...equipoData, id: editingEquipo.id } : eq)),
-      )
+  // Cargar desde contexto al montar / cuando cambie
+  useEffect(() => {
+    if (Array.isArray(contextEquipos) && contextEquipos.length > 0) {
+      // clonamos para evitar mutaciones directas
+      setEquipos(contextEquipos.map((e) => ({ ...e })))
     } else {
-      const newEquipo: Equipo = {
-        ...equipoData,
-        id: (equipos.length + 1).toString(),
-      }
-      setEquipos((prev) => [...prev, newEquipo])
+      setEquipos([]) // arranque limpio si no hay equipos en contexto
     }
-    setShowForm(false)
-    setEditingEquipo(null)
+  }, [contextEquipos])
+
+  // Generador de id seguro (prefiere secuencia numérica si existen)
+  const generarIdEquipo = () => {
+    const numericIds = equipos
+      .map((t) => {
+        const n = Number(t.id)
+        return Number.isFinite(n) ? n : NaN
+      })
+      .filter((n) => Number.isFinite(n))
+    if (numericIds.length > 0) {
+      return (Math.max(...numericIds) + 1).toString()
+    }
+    return `eq_${Date.now()}`
+  }
+
+  // Guardar (crear o actualizar). Acepta que las funciones de contexto retornes entity o nothing.
+  const handleSaveEquipo = async (equipoData: Omit<Equipo, "id">) => {
+    try {
+      if (editingEquipo) {
+        // actualización
+        if (typeof actualizarEquipoContext === "function") {
+          const result = await Promise.resolve(actualizarEquipoContext(editingEquipo.id, equipoData))
+          // Si el contexto devuelve el equipo actualizado con id, úsalo; si no, reconstruimos con id conocido.
+          const actualizado: Equipo =
+            result && result.id ? result : ({ ...equipoData, id: editingEquipo.id } as Equipo)
+
+          // Si el contexto es la fuente de la verdad, la lista llegará por efecto; si no, actualizamos local.
+          if (!Array.isArray(contextEquipos) || contextEquipos.length === 0) {
+            setEquipos((prev) => prev.map((eq) => (eq.id === editingEquipo.id ? actualizado : eq)))
+          }
+        } else {
+          // fallback local
+          setEquipos((prev) => prev.map((eq) => (eq.id === editingEquipo.id ? ({ ...equipoData, id: editingEquipo.id } as Equipo) : eq)))
+        }
+      } else {
+        // creación
+        if (typeof crearEquipoContext === "function") {
+          const result = await Promise.resolve(crearEquipoContext(equipoData))
+          if (result && result.id) {
+            // si contexto retorna la entidad creada, todo bien (la lista puede venir por contexto)
+            if (!Array.isArray(contextEquipos) || contextEquipos.length === 0) {
+              setEquipos((prev) => [...prev, result])
+            }
+          } else {
+            // contexto no retornó id -> generamos localmente
+            const newEquipo: Equipo = { ...equipoData, id: generarIdEquipo() }
+            setEquipos((prev) => [...prev, newEquipo])
+          }
+        } else {
+          // fallback local
+          const newEquipo: Equipo = { ...equipoData, id: generarIdEquipo() }
+          setEquipos((prev) => [...prev, newEquipo])
+        }
+      }
+    } catch (err) {
+      console.error("Error guardando equipo:", err)
+    } finally {
+      setShowForm(false)
+      setEditingEquipo(null)
+    }
   }
 
   const handleEditEquipo = (equipo: Equipo) => {
@@ -135,9 +129,22 @@ export function EquiposList() {
     setShowForm(true)
   }
 
-  const handleDeleteEquipo = (equipoId: string) => {
-    setEquipos((prev) => prev.filter((eq) => eq.id !== equipoId))
-    setDeleteModal({ isOpen: false, equipo: null })
+  const handleDeleteEquipo = async (equipoId: string) => {
+    try {
+      if (typeof eliminarEquipoContext === "function") {
+        await Promise.resolve(eliminarEquipoContext(equipoId))
+        // si el contexto administra la lista, el efecto de contextEquipos la actualizará
+        if (!Array.isArray(contextEquipos) || contextEquipos.length === 0) {
+          setEquipos((prev) => prev.filter((eq) => eq.id !== equipoId))
+        }
+      } else {
+        setEquipos((prev) => prev.filter((eq) => eq.id !== equipoId))
+      }
+    } catch (err) {
+      console.error("Error eliminando equipo:", err)
+    } finally {
+      setDeleteModal({ isOpen: false, equipo: null })
+    }
   }
 
   const handleViewEquipo = (equipo: Equipo) => {
@@ -149,10 +156,12 @@ export function EquiposList() {
   }
 
   const filteredEquipos = equipos.filter((equipo) => {
+    const q = searchTerm.trim().toLowerCase()
     const matchesSearch =
-      equipo.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      equipo.codigo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      equipo.ubicacion.toLowerCase().includes(searchTerm.toLowerCase())
+      q === "" ||
+      equipo.nombre.toLowerCase().includes(q) ||
+      equipo.codigo.toLowerCase().includes(q) ||
+      equipo.ubicacion.toLowerCase().includes(q)
     const matchesTipo = filterTipo === "todos" || equipo.tipo === filterTipo
     const matchesEstado = filterEstado === "todos" || equipo.estado === filterEstado
 
@@ -382,7 +391,9 @@ export function EquiposList() {
             </div>
             <div>
               <p className="text-sm font-medium text-muted-foreground">Fecha de Instalación</p>
-              <p className="text-base">{new Date(viewModal.equipo.fechaInstalacion).toLocaleDateString()}</p>
+              <p className="text-base">
+                {viewModal.equipo.fechaInstalacion ? new Date(viewModal.equipo.fechaInstalacion).toLocaleDateString() : "—"}
+              </p>
             </div>
           </div>
         )}
@@ -397,10 +408,7 @@ export function EquiposList() {
             <Button variant="outline" onClick={() => setDeleteModal({ isOpen: false, equipo: null })}>
               Cancelar
             </Button>
-            <Button
-              variant="destructive"
-              onClick={() => deleteModal.equipo && handleDeleteEquipo(deleteModal.equipo.id)}
-            >
+            <Button variant="destructive" onClick={() => deleteModal.equipo && handleDeleteEquipo(deleteModal.equipo.id)}>
               Eliminar
             </Button>
           </>

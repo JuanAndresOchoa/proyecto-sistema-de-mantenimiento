@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,65 +10,84 @@ import { Badge } from "@/components/ui/badge"
 import { Building2, Users, Plus, Edit, Trash2, Save, X, MapPin } from "lucide-react"
 import { useApp } from "@/contexts/app-context"
 
+/**
+ * Tipos utilizados en el componente
+ */
 interface Tecnico {
-  id: number
+  id: number | string
   nombre: string
   cargo: string
-  especialidad: string
-  telefono: string
-  email: string
+  especialidad?: string
+  telefono?: string
+  email?: string
   activo: boolean
 }
 
-export function ConfiguracionDashboard() {
-  const { areasEmpresa, crearAreaEmpresa, actualizarAreaEmpresa, eliminarAreaEmpresa } = useApp()
+interface Area {
+  id: string
+  nombre: string
+  descripcion?: string
+  responsable?: string
+  activa: boolean
+}
 
-  const [empresa, setEmpresa] = useState({
-    nombre: "Industrias Ejemplo S.A.",
-    direccion: "Av. Industrial 123, Zona Industrial",
-    telefono: "+1 234 567 8900",
-    email: "contacto@industriasejemplo.com",
-    ruc: "12345678901",
+interface Empresa {
+  nombre: string
+  direccion: string
+  telefono: string
+  email: string
+  ruc: string
+}
+
+/**
+ * Interfaz mínima del contexto que usas.
+ * Ajusta los tipos de retorno/argumentos según tu implementación real si hace falta.
+ */
+interface AppContext {
+  areasEmpresa?: Area[]
+  crearAreaEmpresa?: (area: Partial<Area>) => Promise<any>
+  actualizarAreaEmpresa?: (id: string, data: Partial<Area>) => Promise<any>
+  eliminarAreaEmpresa?: (id: string) => Promise<any>
+
+  tecnicos?: Tecnico[]
+  crearTecnico?: (t: Tecnico) => Promise<any>
+  actualizarTecnico?: (id: number | string, t: Tecnico) => Promise<any>
+  eliminarTecnico?: (id: number | string) => Promise<any>
+
+  empresa?: Partial<Empresa> | null
+  actualizarEmpresa?: (e: Partial<Empresa>) => Promise<any>
+}
+
+export function ConfiguracionDashboard() {
+  // Tipamos el contexto en vez de usar `any`
+  const app = useApp() as AppContext
+
+  // Areas (ahora correctamente tipadas)
+  const areasEmpresa: Area[] = app?.areasEmpresa ?? []
+  const crearAreaEmpresa = app?.crearAreaEmpresa
+  const actualizarAreaEmpresa = app?.actualizarAreaEmpresa
+  const eliminarAreaEmpresa = app?.eliminarAreaEmpresa
+
+  // Técnicos
+  const contextoTecnicos: Tecnico[] = app?.tecnicos ?? []
+  const crearTecnicoContext = app?.crearTecnico
+  const actualizarTecnicoContext = app?.actualizarTecnico
+  const eliminarTecnicoContext = app?.eliminarTecnico
+
+  // Empresa
+  const empresaContext = app?.empresa ?? null
+  const actualizarEmpresaContext = app?.actualizarEmpresa
+
+  // Estado local
+  const [empresa, setEmpresa] = useState<Empresa>({
+    nombre: "",
+    direccion: "",
+    telefono: "",
+    email: "",
+    ruc: "",
   })
 
-  const [tecnicos, setTecnicos] = useState<Tecnico[]>([
-    {
-      id: 1,
-      nombre: "Juan Pérez",
-      cargo: "Técnico Eléctrico Senior",
-      especialidad: "Motores y Transformadores",
-      telefono: "+1 234 567 8901",
-      email: "juan.perez@empresa.com",
-      activo: true,
-    },
-    {
-      id: 2,
-      nombre: "Carlos López",
-      cargo: "Técnico Mecánico",
-      especialidad: "Bombas y Sistemas Hidráulicos",
-      telefono: "+1 234 567 8902",
-      email: "carlos.lopez@empresa.com",
-      activo: true,
-    },
-    {
-      id: 3,
-      nombre: "Ana García",
-      cargo: "Ingeniera de Mantenimiento",
-      especialidad: "Planificación y Supervisión",
-      telefono: "+1 234 567 8903",
-      email: "ana.garcia@empresa.com",
-      activo: true,
-    },
-    {
-      id: 4,
-      nombre: "Miguel Torres",
-      cargo: "Técnico Instrumentista",
-      especialidad: "Calibración y Medición",
-      telefono: "+1 234 567 8904",
-      email: "miguel.torres@empresa.com",
-      activo: false,
-    },
-  ])
+  const [tecnicos, setTecnicos] = useState<Tecnico[]>([])
 
   const [editandoEmpresa, setEditandoEmpresa] = useState(false)
   const [mostrarFormTecnico, setMostrarFormTecnico] = useState(false)
@@ -83,64 +102,165 @@ export function ConfiguracionDashboard() {
   })
 
   const [mostrarFormArea, setMostrarFormArea] = useState(false)
-  const [areaEditando, setAreaEditando] = useState<any>(null)
-  const [nuevaArea, setNuevaArea] = useState({
+  const [areaEditando, setAreaEditando] = useState<Area | null>(null)
+  const [nuevaArea, setNuevaArea] = useState<Partial<Area>>({
     nombre: "",
     descripcion: "",
     responsable: "",
     activa: true,
   })
 
-  const guardarEmpresa = () => {
-    console.log("Guardando información de empresa:", empresa)
-    setEditandoEmpresa(false)
+  // Cargar datos desde contexto al montar (si existen)
+  useEffect(() => {
+    if (empresaContext) {
+      setEmpresa({
+        nombre: (empresaContext.nombre as string) || "",
+        direccion: (empresaContext.direccion as string) || "",
+        telefono: (empresaContext.telefono as string) || "",
+        email: (empresaContext.email as string) || "",
+        ruc: (empresaContext.ruc as string) || "",
+      })
+    }
+  }, [empresaContext])
+
+  useEffect(() => {
+    if (Array.isArray(contextoTecnicos) && contextoTecnicos.length > 0) {
+      setTecnicos(contextoTecnicos.map((t) => ({ ...t })))
+    } else {
+      setTecnicos([]) // arranque limpio si no hay técnicos en contexto
+    }
+  }, [contextoTecnicos])
+
+  // Contadores
+  const tecnicosActivos = tecnicos.filter((t) => t.activo).length
+  const areasActivas = areasEmpresa.filter((a) => a.activa).length
+
+  // Util: generar id seguro (prefiere ids numéricos existentes, sino timestamp)
+  const generarIdTecnico = (): number | string => {
+    const numericIds = tecnicos
+      .map((t) => (typeof t.id === "number" ? t.id : NaN))
+      .filter((n) => Number.isFinite(n))
+    if (numericIds.length > 0) {
+      return Math.max(...numericIds) + 1
+    }
+    return `t_${Date.now()}`
   }
 
-  const agregarTecnico = () => {
-    if (nuevoTecnico.nombre && nuevoTecnico.cargo) {
-      const tecnico: Tecnico = {
-        id: Math.max(...tecnicos.map((t) => t.id)) + 1,
-        nombre: nuevoTecnico.nombre!,
-        cargo: nuevoTecnico.cargo!,
-        especialidad: nuevoTecnico.especialidad || "",
-        telefono: nuevoTecnico.telefono || "",
-        email: nuevoTecnico.email || "",
-        activo: nuevoTecnico.activo ?? true,
+  // Empresa
+  const guardarEmpresa = async () => {
+    try {
+      if (typeof actualizarEmpresaContext === "function") {
+        const res = await Promise.resolve(actualizarEmpresaContext(empresa))
+        // si el provider devuelve la empresa actualizada, úsala
+        if (res && typeof res === "object") {
+          setEmpresa({
+            nombre: (res.nombre as string) || "",
+            direccion: (res.direccion as string) || "",
+            telefono: (res.telefono as string) || "",
+            email: (res.email as string) || "",
+            ruc: (res.ruc as string) || "",
+          })
+        }
+      } else {
+        // No hay provider: los cambios quedan locales (como fallback)
+        console.warn("actualizarEmpresaContext no está definido — cambios solo locales")
       }
-      setTecnicos([...tecnicos, tecnico])
-      setNuevoTecnico({ nombre: "", cargo: "", especialidad: "", telefono: "", email: "", activo: true })
-      setMostrarFormTecnico(false)
+      setEditandoEmpresa(false)
+    } catch (err) {
+      console.error("Error guardando empresa:", err)
     }
   }
 
-  const editarTecnico = (tecnico: Tecnico) => {
-    setTecnicoEditando(tecnico)
-    setNuevoTecnico(tecnico)
+  // Técnicos: agregar / editar / eliminar (usa contexto si existe) - ahora con fallback optimista/local
+  const agregarTecnico = async () => {
+    if (!nuevoTecnico.nombre || !nuevoTecnico.cargo) return
+    const tecnico: Tecnico = {
+      id: generarIdTecnico(),
+      nombre: (nuevoTecnico.nombre as string).trim(),
+      cargo: (nuevoTecnico.cargo as string).trim(),
+      especialidad: (nuevoTecnico.especialidad as string) || "",
+      telefono: (nuevoTecnico.telefono as string) || "",
+      email: (nuevoTecnico.email as string) || "",
+      activo: nuevoTecnico.activo ?? true,
+    }
+
+    try {
+      if (typeof crearTecnicoContext === "function") {
+        const res = await Promise.resolve(crearTecnicoContext(tecnico))
+        // Si el provider devuelve el técnico (con id definitivo), añádelo; si no, haz fallback
+        const tecnicoFinal = (res && typeof res === "object") ? (res as Tecnico) : tecnico
+        setTecnicos((prev) => (prev.some((t) => t.id === tecnicoFinal.id) ? prev : [...prev, tecnicoFinal]))
+      } else {
+        // Sin provider: actualizamos localmente
+        setTecnicos((prev) => [...prev, tecnico])
+      }
+      cancelarFormTecnico()
+    } catch (err) {
+      console.error("Error creando técnico:", err)
+    }
+  }
+
+  const editarTecnico = (t: Tecnico) => {
+    setTecnicoEditando(t)
+    setNuevoTecnico({ ...t })
     setMostrarFormTecnico(true)
   }
 
-  const guardarTecnico = () => {
-    if (tecnicoEditando && nuevoTecnico.nombre && nuevoTecnico.cargo) {
-      const tecnicoActualizado: Tecnico = {
-        ...tecnicoEditando,
-        nombre: nuevoTecnico.nombre!,
-        cargo: nuevoTecnico.cargo!,
-        especialidad: nuevoTecnico.especialidad || "",
-        telefono: nuevoTecnico.telefono || "",
-        email: nuevoTecnico.email || "",
-        activo: nuevoTecnico.activo ?? true,
+  const guardarTecnico = async () => {
+    if (!tecnicoEditando) return
+    if (!nuevoTecnico.nombre || !nuevoTecnico.cargo) return
+
+    const tecnicoActualizado: Tecnico = {
+      ...tecnicoEditando,
+      nombre: (nuevoTecnico.nombre as string).trim(),
+      cargo: (nuevoTecnico.cargo as string).trim(),
+      especialidad: (nuevoTecnico.especialidad as string) || "",
+      telefono: (nuevoTecnico.telefono as string) || "",
+      email: (nuevoTecnico.email as string) || "",
+      activo: nuevoTecnico.activo ?? true,
+    }
+
+    try {
+      if (typeof actualizarTecnicoContext === "function") {
+        const res = await Promise.resolve(actualizarTecnicoContext(tecnicoActualizado.id, tecnicoActualizado))
+        const tecnicoFinal = (res && typeof res === "object") ? (res as Tecnico) : tecnicoActualizado
+        setTecnicos((prev) => prev.map((t) => (t.id === tecnicoFinal.id ? tecnicoFinal : t)))
+      } else {
+        setTecnicos((prev) => prev.map((t) => (t.id === tecnicoActualizado.id ? tecnicoActualizado : t)))
       }
-      setTecnicos(tecnicos.map((t) => (t.id === tecnicoEditando.id ? tecnicoActualizado : t)))
       cancelarFormTecnico()
+    } catch (err) {
+      console.error("Error actualizando técnico:", err)
     }
   }
 
-  const eliminarTecnico = (id: number) => {
-    setTecnicos(tecnicos.filter((t) => t.id !== id))
+  const eliminarTecnico = async (id: number | string) => {
+    try {
+      if (typeof eliminarTecnicoContext === "function") {
+        await Promise.resolve(eliminarTecnicoContext(id))
+      }
+      // En ambos casos (contexto o no) eliminamos del estado local para reflejar la UI inmediatamente
+      setTecnicos((prev) => prev.filter((t) => t.id !== id))
+    } catch (err) {
+      console.error("Error eliminando técnico:", err)
+    }
   }
 
-  const toggleActivoTecnico = (id: number) => {
-    setTecnicos(tecnicos.map((t) => (t.id === id ? { ...t, activo: !t.activo } : t)))
+  const toggleActivoTecnico = async (id: number | string) => {
+    const t = tecnicos.find((x) => x.id === id)
+    if (!t) return
+    const actualizado = { ...t, activo: !t.activo }
+    try {
+      if (typeof actualizarTecnicoContext === "function") {
+        const res = await Promise.resolve(actualizarTecnicoContext(id, actualizado))
+        const tecnicoFinal = (res && typeof res === "object") ? (res as Tecnico) : actualizado
+        setTecnicos((prev) => prev.map((x) => (x.id === id ? tecnicoFinal : x)))
+      } else {
+        setTecnicos((prev) => prev.map((x) => (x.id === id ? actualizado : x)))
+      }
+    } catch (err) {
+      console.error("Error toggling activo técnico:", err)
+    }
   }
 
   const cancelarFormTecnico = () => {
@@ -149,45 +269,77 @@ export function ConfiguracionDashboard() {
     setNuevoTecnico({ nombre: "", cargo: "", especialidad: "", telefono: "", email: "", activo: true })
   }
 
-  const agregarArea = () => {
-    if (nuevaArea.nombre && nuevaArea.responsable) {
-      crearAreaEmpresa({
-        nombre: nuevaArea.nombre,
-        descripcion: nuevaArea.descripcion,
-        responsable: nuevaArea.responsable,
-        activa: nuevaArea.activa,
-      })
+  // Áreas: agregar / editar / eliminar (ya usabas el contexto; lo mantenemos seguro)
+  const agregarArea = async () => {
+    if (!nuevaArea.nombre || !nuevaArea.responsable) return
+    try {
+      if (typeof crearAreaEmpresa === "function") {
+        await Promise.resolve(
+          crearAreaEmpresa({
+            nombre: nuevaArea.nombre,
+            descripcion: nuevaArea.descripcion,
+            responsable: nuevaArea.responsable,
+            activa: nuevaArea.activa,
+          })
+        )
+      }
       setNuevaArea({ nombre: "", descripcion: "", responsable: "", activa: true })
       setMostrarFormArea(false)
+    } catch (err) {
+      console.error("Error creando área:", err)
     }
   }
 
-  const editarArea = (area: any) => {
+  const editarArea = (area: Area) => {
     setAreaEditando(area)
-    setNuevaArea(area)
+    setNuevaArea({
+      nombre: area.nombre || "",
+      descripcion: area.descripcion || "",
+      responsable: area.responsable || "",
+      activa: area.activa ?? true,
+    })
     setMostrarFormArea(true)
   }
 
-  const guardarArea = () => {
-    if (areaEditando && nuevaArea.nombre && nuevaArea.responsable) {
-      actualizarAreaEmpresa(areaEditando.id, {
-        nombre: nuevaArea.nombre,
-        descripcion: nuevaArea.descripcion,
-        responsable: nuevaArea.responsable,
-        activa: nuevaArea.activa,
-      })
+  const guardarArea = async () => {
+    if (!areaEditando) return
+    if (!nuevaArea.nombre || !nuevaArea.responsable) return
+    try {
+      if (typeof actualizarAreaEmpresa === "function") {
+        await Promise.resolve(
+          actualizarAreaEmpresa(areaEditando.id, {
+            nombre: nuevaArea.nombre,
+            descripcion: nuevaArea.descripcion,
+            responsable: nuevaArea.responsable,
+            activa: nuevaArea.activa,
+          })
+        )
+      }
       cancelarFormArea()
+    } catch (err) {
+      console.error("Error actualizando área:", err)
     }
   }
 
-  const eliminarArea = (id: string) => {
-    eliminarAreaEmpresa(id)
+  const eliminarArea = async (id: string) => {
+    try {
+      if (typeof eliminarAreaEmpresa === "function") {
+        await Promise.resolve(eliminarAreaEmpresa(id))
+      }
+    } catch (err) {
+      console.error("Error eliminando área:", err)
+    }
   }
 
-  const toggleActivaArea = (id: string) => {
+  const toggleActivaArea = async (id: string) => {
     const area = areasEmpresa.find((a) => a.id === id)
-    if (area) {
-      actualizarAreaEmpresa(id, { activa: !area.activa })
+    if (!area) return
+    try {
+      if (typeof actualizarAreaEmpresa === "function") {
+        await Promise.resolve(actualizarAreaEmpresa(id, { activa: !area.activa }))
+      }
+    } catch (err) {
+      console.error("Error toggling área:", err)
     }
   }
 
@@ -197,8 +349,8 @@ export function ConfiguracionDashboard() {
     setNuevaArea({ nombre: "", descripcion: "", responsable: "", activa: true })
   }
 
-  const tecnicosActivos = tecnicos.filter((t) => t.activo).length
-  const areasActivas = areasEmpresa.filter((a) => a.activa).length
+  // Validaciones simples
+  const tecnicoValido = !!nuevoTecnico.nombre && !!nuevoTecnico.cargo
 
   return (
     <div className="space-y-6">
@@ -243,7 +395,7 @@ export function ConfiguracionDashboard() {
             </div>
             <Button
               variant={editandoEmpresa ? "outline" : "default"}
-              onClick={() => (editandoEmpresa ? setEditandoEmpresa(false) : setEditandoEmpresa(true))}
+              onClick={() => setEditandoEmpresa((s) => !s)}
             >
               {editandoEmpresa ? <X className="h-4 w-4 mr-2" /> : <Edit className="h-4 w-4 mr-2" />}
               {editandoEmpresa ? "Cancelar" : "Editar"}
@@ -316,25 +468,25 @@ export function ConfiguracionDashboard() {
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
                   <p className="text-sm text-muted-foreground">Nombre</p>
-                  <p className="font-semibold">{empresa.nombre}</p>
+                  <p className="font-semibold">{empresa.nombre || "—"}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">RUC/NIT</p>
-                  <p className="font-semibold">{empresa.ruc}</p>
+                  <p className="font-semibold">{empresa.ruc || "—"}</p>
                 </div>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Dirección</p>
-                <p className="font-semibold">{empresa.direccion}</p>
+                <p className="font-semibold">{empresa.direccion || "—"}</p>
               </div>
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
                   <p className="text-sm text-muted-foreground">Teléfono</p>
-                  <p className="font-semibold">{empresa.telefono}</p>
+                  <p className="font-semibold">{empresa.telefono || "—"}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Email</p>
-                  <p className="font-semibold">{empresa.email}</p>
+                  <p className="font-semibold">{empresa.email || "—"}</p>
                 </div>
               </div>
             </div>
@@ -373,7 +525,7 @@ export function ConfiguracionDashboard() {
                       <Label htmlFor="nombreArea">Nombre del Área *</Label>
                       <Input
                         id="nombreArea"
-                        value={nuevaArea.nombre}
+                        value={nuevaArea.nombre || ""}
                         onChange={(e) => setNuevaArea({ ...nuevaArea, nombre: e.target.value })}
                         placeholder="Nombre del área o departamento"
                       />
@@ -382,7 +534,7 @@ export function ConfiguracionDashboard() {
                       <Label htmlFor="responsableArea">Responsable *</Label>
                       <Input
                         id="responsableArea"
-                        value={nuevaArea.responsable}
+                        value={nuevaArea.responsable || ""}
                         onChange={(e) => setNuevaArea({ ...nuevaArea, responsable: e.target.value })}
                         placeholder="Responsable del área"
                       />
@@ -392,7 +544,7 @@ export function ConfiguracionDashboard() {
                     <Label htmlFor="descripcionArea">Descripción</Label>
                     <Textarea
                       id="descripcionArea"
-                      value={nuevaArea.descripcion}
+                      value={nuevaArea.descripcion || ""}
                       onChange={(e) => setNuevaArea({ ...nuevaArea, descripcion: e.target.value })}
                       placeholder="Descripción del área y sus funciones"
                       rows={2}
@@ -496,7 +648,7 @@ export function ConfiguracionDashboard() {
                       <Label htmlFor="nombreTecnico">Nombre Completo *</Label>
                       <Input
                         id="nombreTecnico"
-                        value={nuevoTecnico.nombre}
+                        value={nuevoTecnico.nombre || ""}
                         onChange={(e) => setNuevoTecnico({ ...nuevoTecnico, nombre: e.target.value })}
                         placeholder="Nombre completo del técnico"
                       />
@@ -505,7 +657,7 @@ export function ConfiguracionDashboard() {
                       <Label htmlFor="cargoTecnico">Cargo *</Label>
                       <Input
                         id="cargoTecnico"
-                        value={nuevoTecnico.cargo}
+                        value={nuevoTecnico.cargo || ""}
                         onChange={(e) => setNuevoTecnico({ ...nuevoTecnico, cargo: e.target.value })}
                         placeholder="Cargo o posición"
                       />
@@ -515,7 +667,7 @@ export function ConfiguracionDashboard() {
                     <Label htmlFor="especialidadTecnico">Especialidad</Label>
                     <Input
                       id="especialidadTecnico"
-                      value={nuevoTecnico.especialidad}
+                      value={nuevoTecnico.especialidad || ""}
                       onChange={(e) => setNuevoTecnico({ ...nuevoTecnico, especialidad: e.target.value })}
                       placeholder="Área de especialización"
                     />
@@ -525,7 +677,7 @@ export function ConfiguracionDashboard() {
                       <Label htmlFor="telefonoTecnico">Teléfono</Label>
                       <Input
                         id="telefonoTecnico"
-                        value={nuevoTecnico.telefono}
+                        value={nuevoTecnico.telefono || ""}
                         onChange={(e) => setNuevoTecnico({ ...nuevoTecnico, telefono: e.target.value })}
                         placeholder="Teléfono de contacto"
                       />
@@ -535,7 +687,7 @@ export function ConfiguracionDashboard() {
                       <Input
                         id="emailTecnico"
                         type="email"
-                        value={nuevoTecnico.email}
+                        value={nuevoTecnico.email || ""}
                         onChange={(e) => setNuevoTecnico({ ...nuevoTecnico, email: e.target.value })}
                         placeholder="Email del técnico"
                       />
@@ -546,7 +698,7 @@ export function ConfiguracionDashboard() {
                       <X className="h-4 w-4 mr-2" />
                       Cancelar
                     </Button>
-                    <Button onClick={tecnicoEditando ? guardarTecnico : agregarTecnico}>
+                    <Button onClick={tecnicoEditando ? guardarTecnico : agregarTecnico} disabled={!tecnicoValido}>
                       <Save className="h-4 w-4 mr-2" />
                       {tecnicoEditando ? "Actualizar" : "Agregar"} Técnico
                     </Button>
@@ -559,7 +711,7 @@ export function ConfiguracionDashboard() {
           {/* Lista de técnicos */}
           <div className="space-y-4">
             {tecnicos.map((tecnico) => (
-              <Card key={tecnico.id} className={!tecnico.activo ? "opacity-60" : ""}>
+              <Card key={String(tecnico.id)} className={!tecnico.activo ? "opacity-60" : ""}>
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">
                     <div className="flex-1">

@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -21,15 +20,19 @@ interface MantenimientoFormProps {
 }
 
 export function MantenimientoForm({ mantenimiento, onSave, onCancel }: MantenimientoFormProps) {
-  const { equipos, areasEmpresa, crearMantenimiento, actualizarMantenimiento } = useApp()
+  const app = useApp() as any
+  const equipos = app?.equipos ?? []
+  const areasEmpresa = app?.areasEmpresa ?? []
+  const crearMantenimiento = app?.crearMantenimiento
+  const actualizarMantenimiento = app?.actualizarMantenimiento
 
   const [formData, setFormData] = useState({
     equipoId: "",
     equipoNombre: "",
-    tipo: "Preventivo",
+    tipo: "",
     descripcion: "",
     fechaProgramada: "",
-    prioridad: "Media",
+    prioridad: "",
     tecnico: "",
     area: "",
     costo: "",
@@ -62,12 +65,12 @@ export function MantenimientoForm({ mantenimiento, onSave, onCancel }: Mantenimi
   useEffect(() => {
     if (mantenimiento) {
       setFormData({
-        equipoId: mantenimiento.equipoId || "",
+        equipoId: mantenimiento.equipoId ? String(mantenimiento.equipoId) : "",
         equipoNombre: mantenimiento.equipoNombre || "",
-        tipo: mantenimiento.tipo || "Preventivo",
+        tipo: mantenimiento.tipo || "",
         descripcion: mantenimiento.descripcion || "",
         fechaProgramada: mantenimiento.fechaProgramada ? mantenimiento.fechaProgramada.split("T")[0] : "",
-        prioridad: mantenimiento.prioridad || "Media",
+        prioridad: mantenimiento.prioridad || "",
         tecnico: mantenimiento.tecnico || "",
         area: mantenimiento.area || "",
         costo: mantenimiento.costo?.toString() || "",
@@ -80,7 +83,7 @@ export function MantenimientoForm({ mantenimiento, onSave, onCancel }: Mantenimi
         herramientasRequeridas: mantenimiento.herramientasRequeridas || [],
         procedimientos: mantenimiento.procedimientos || [],
         observaciones: mantenimiento.observaciones || "",
-        requiereParada: mantenimiento.requiereParada || false,
+        requiereParada: !!mantenimiento.requiereParada,
         tiempoParada: mantenimiento.tiempoParada?.toString() || "",
         fechaInicio: mantenimiento.fechaInicio ? mantenimiento.fechaInicio.split("T")[0] : "",
         fechaCompletado: mantenimiento.fechaCompletado ? mantenimiento.fechaCompletado.split("T")[0] : "",
@@ -95,8 +98,7 @@ export function MantenimientoForm({ mantenimiento, onSave, onCancel }: Mantenimi
     }
   }, [mantenimiento])
 
-  const tecnicos = ["Juan Pérez", "María García", "Carlos López", "Ana Rodríguez", "Luis Martín", "Carmen Silva"]
-
+  // Listas estáticas (estas no son "semilla" de formulario; son opciones)
   const tiposMantenimiento = [
     "Preventivo",
     "Correctivo",
@@ -121,15 +123,18 @@ export function MantenimientoForm({ mantenimiento, onSave, onCancel }: Mantenimi
     "Una vez",
   ]
 
+  // En este archivo dejamos la lista de técnicos vacía para no mostrar nombres por defecto.
+  const tecnicos: string[] = []
+
   const handleInputChange = (field: string, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
   }
 
   const handleEquipoChange = (equipoId: string) => {
-    const equipo = equipos.find((e) => e.id === equipoId)
+    const equipo = (equipos || []).find((e: any) => String(e.id) === String(equipoId))
     setFormData((prev) => ({
       ...prev,
-      equipoId,
+      equipoId: String(equipoId),
       equipoNombre: equipo?.nombre || "",
       area: equipo?.area || prev.area,
     }))
@@ -244,7 +249,13 @@ export function MantenimientoForm({ mantenimiento, onSave, onCancel }: Mantenimi
     }
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const safeParseNumber = (val: string) => {
+    if (val === "" || val === null || typeof val === "undefined") return undefined
+    const n = Number.parseFloat(String(val))
+    return Number.isFinite(n) ? n : undefined
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     const mantenimientoData = {
@@ -255,28 +266,40 @@ export function MantenimientoForm({ mantenimiento, onSave, onCancel }: Mantenimi
         : undefined,
       fechaInicio: formData.fechaInicio ? new Date(formData.fechaInicio).toISOString() : undefined,
       fechaCompletado: formData.fechaCompletado ? new Date(formData.fechaCompletado).toISOString() : undefined,
-      costo: formData.costo ? Number.parseFloat(formData.costo) : undefined,
-      costoReal: formData.costoReal ? Number.parseFloat(formData.costoReal) : undefined,
-      duracionEstimada: formData.duracionEstimada ? Number.parseFloat(formData.duracionEstimada) : undefined,
-      tiempoReal: formData.tiempoReal ? Number.parseFloat(formData.tiempoReal) : undefined,
-      tiempoParada: formData.tiempoParada ? Number.parseFloat(formData.tiempoParada) : undefined,
+      costo: safeParseNumber(formData.costo),
+      costoReal: safeParseNumber(formData.costoReal),
+      duracionEstimada: safeParseNumber(formData.duracionEstimada),
+      tiempoReal: safeParseNumber(formData.tiempoReal),
+      tiempoParada: safeParseNumber(formData.tiempoParada),
+      estado: mantenimiento ? mantenimiento.estado : "Pendiente",
     }
 
-    if (mantenimiento) {
-      actualizarMantenimiento(mantenimiento.id, mantenimientoData)
-    } else {
-      crearMantenimiento(mantenimientoData)
+    try {
+      if (mantenimiento) {
+        if (typeof actualizarMantenimiento === "function") {
+          await Promise.resolve(actualizarMantenimiento(mantenimiento.id, mantenimientoData))
+        } else {
+          console.warn("actualizarMantenimiento no está disponible en el contexto")
+        }
+      } else {
+        if (typeof crearMantenimiento === "function") {
+          await Promise.resolve(crearMantenimiento(mantenimientoData))
+        } else {
+          console.warn("crearMantenimiento no está disponible en el contexto")
+        }
+      }
+      onSave(mantenimientoData)
+    } catch (err) {
+      console.error("Error guardando mantenimiento:", err)
+      // Aquí podrías mostrar una notificación al usuario en tu UI
     }
-
-    onSave(mantenimientoData)
   }
 
   const isFormValid =
-    formData.equipoId && formData.tipo && formData.descripcion && formData.fechaProgramada && formData.tecnico
+    !!formData.equipoId && !!formData.tipo && !!formData.descripcion && !!formData.fechaProgramada && !!formData.tecnico
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
@@ -284,9 +307,7 @@ export function MantenimientoForm({ mantenimiento, onSave, onCancel }: Mantenimi
             {mantenimiento ? "Editar Mantenimiento" : "Nuevo Mantenimiento"}
           </h2>
           <p className="text-muted-foreground">
-            {mantenimiento
-              ? `Editando mantenimiento ${mantenimiento.id}`
-              : "Programa un nuevo mantenimiento preventivo o correctivo"}
+            {mantenimiento ? `Editando mantenimiento ${mantenimiento.id}` : "Programa un nuevo mantenimiento"}
           </p>
         </div>
         <div className="flex gap-2">
@@ -301,7 +322,6 @@ export function MantenimientoForm({ mantenimiento, onSave, onCancel }: Mantenimi
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Información General */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -319,14 +339,21 @@ export function MantenimientoForm({ mantenimiento, onSave, onCancel }: Mantenimi
                     <SelectValue placeholder="Seleccionar equipo" />
                   </SelectTrigger>
                   <SelectContent>
-                    {equipos.map((equipo) => (
-                      <SelectItem key={equipo.id} value={equipo.id}>
-                        {equipo.id} - {equipo.nombre}
+                    {(equipos && equipos.length > 0) ? (
+                      equipos.map((equipo: any) => (
+                        <SelectItem key={equipo.id} value={String(equipo.id)}>
+                          {String(equipo.id)} - {equipo.nombre}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <SelectItem value="__no_equipos" disabled>
+                        No hay equipos guardados
                       </SelectItem>
-                    ))}
+                    )}
                   </SelectContent>
                 </Select>
               </div>
+
               <div className="space-y-2">
                 <Label htmlFor="tipo">Tipo de Mantenimiento *</Label>
                 <Select value={formData.tipo} onValueChange={(value) => handleInputChange("tipo", value)}>
@@ -342,6 +369,7 @@ export function MantenimientoForm({ mantenimiento, onSave, onCancel }: Mantenimi
                   </SelectContent>
                 </Select>
               </div>
+
               <div className="space-y-2">
                 <Label htmlFor="prioridad">Prioridad</Label>
                 <Select value={formData.prioridad} onValueChange={(value) => handleInputChange("prioridad", value)}>
@@ -400,11 +428,17 @@ export function MantenimientoForm({ mantenimiento, onSave, onCancel }: Mantenimi
                     <SelectValue placeholder="Seleccionar técnico" />
                   </SelectTrigger>
                   <SelectContent>
-                    {tecnicos.map((tecnico) => (
-                      <SelectItem key={tecnico} value={tecnico}>
-                        {tecnico}
+                    {tecnicos && tecnicos.length > 0 ? (
+                      tecnicos.map((tecnico) => (
+                        <SelectItem key={tecnico} value={tecnico}>
+                          {tecnico}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <SelectItem value="__no_tecnicos" disabled>
+                        No hay técnicos guardados
                       </SelectItem>
-                    ))}
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -416,8 +450,8 @@ export function MantenimientoForm({ mantenimiento, onSave, onCancel }: Mantenimi
                   </SelectTrigger>
                   <SelectContent>
                     {areasEmpresa
-                      .filter((area) => area.activa)
-                      .map((area) => (
+                      .filter((area: any) => area.activa)
+                      .map((area: any) => (
                         <SelectItem key={area.id} value={area.nombre}>
                           {area.nombre}
                         </SelectItem>
@@ -512,7 +546,6 @@ export function MantenimientoForm({ mantenimiento, onSave, onCancel }: Mantenimi
             <CardDescription>Recursos necesarios para el mantenimiento</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Materiales Requeridos */}
             <div className="space-y-3">
               <Label>Materiales Requeridos</Label>
               <div className="flex gap-2">
@@ -536,7 +569,6 @@ export function MantenimientoForm({ mantenimiento, onSave, onCancel }: Mantenimi
               </div>
             </div>
 
-            {/* Herramientas Requeridas */}
             <div className="space-y-3">
               <Label>Herramientas Requeridas</Label>
               <div className="flex gap-2">
