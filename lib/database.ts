@@ -1,93 +1,104 @@
 // lib/database.ts
-// Wrapper minimal para las APIs expuestas por preload.js (asumimos que preload expone window.electronAPI en Electron)
-export const dbService = {
-  // Equipos
-  getEquipos: async () => {
-    return (window as any).electronAPI?.getEquipos ? await (window as any).electronAPI.getEquipos() : [];
-  },
-  createEquipo: async (equipo: any) => {
-    return (window as any).electronAPI?.createEquipo ? await (window as any).electronAPI.createEquipo(equipo) : { success: true };
-  },
-  updateEquipo: async (id: string, changes: any) => {
-    return (window as any).electronAPI?.updateEquipo ? await (window as any).electronAPI.updateEquipo(id, changes) : { success: true };
-  },
-  deleteEquipo: async (id: string) => {
-    return (window as any).electronAPI?.deleteEquipo ? await (window as any).electronAPI.deleteEquipo(id) : { success: true };
-  },
+// Electron-only data access helpers.
+// No imports, no dynamic imports — solo window.electronAPI — diseñado para empaquetado de escritorio.
+// Devuelven siempre arrays (never undefined).
 
-  // Mantenimientos
-  getMantenimientos: async () => {
-    return (window as any).electronAPI?.getMantenimientos ? await (window as any).electronAPI.getMantenimientos() : [];
-  },
-  createMantenimiento: async (mantenimiento: any) => {
-    return (window as any).electronAPI?.createMantenimiento ? await (window as any).electronAPI.createMantenimiento(mantenimiento) : { success: true };
-  },
-  updateMantenimiento: async (id: string, changes: any) => {
-    return (window as any).electronAPI?.updateMantenimiento ? await (window as any).electronAPI.updateMantenimiento(id, changes) : { success: true };
-  },
+type AnyObj = Record<string, any>;
 
-  // Alertas
-  getAlertas: async () => {
-    return (window as any).electronAPI?.getAlertas ? await (window as any).electronAPI.getAlertas() : [];
-  },
-  createAlerta: async (alerta: any) => {
-    return (window as any).electronAPI?.createAlerta ? await (window as any).electronAPI.createAlerta(alerta) : { success: true, id: 1 };
-  },
-  updateAlerta: async (id: number, changes: any) => {
-    return (window as any).electronAPI?.updateAlerta ? await (window as any).electronAPI.updateAlerta(id, changes) : { success: true };
-  },
-  deleteAlerta: async (id: number) => {
-    return (window as any).electronAPI?.deleteAlerta ? await (window as any).electronAPI.deleteAlerta(id) : { success: true };
-  },
+/**
+ * Helper interno: intenta llamar a una función expuesta en window.electronAPI
+ * Puedes exponer estas funciones desde preload.js usando contextBridge.exposeInMainWorld.
+ *
+ * - methodName: nombre de la función en electronAPI (ej: 'getMantenimientos')
+ * - ipcChannelFallback: nombre del canal ipc.invoke si preload implementa invoke-style (ej: 'get-mantenimientos')
+ */
+async function callElectronMethod(
+  methodName: string,
+  ipcChannelFallback?: string
+): Promise<AnyObj[]> {
+  try {
+    if (typeof window === 'undefined') {
+      // Estamos en build/servidor: no intentar acceder a window
+      return [];
+    }
 
-  // Costos
-  getCostos: async () => {
-    return (window as any).electronAPI?.getCostos ? await (window as any).electronAPI.getCostos() : [];
-  },
-  createCosto: async (costo: any) => {
-    return (window as any).electronAPI?.createCosto ? await (window as any).electronAPI.createCosto(costo) : { success: true };
-  },
+    const api = (window as any).electronAPI;
+    if (!api) return [];
 
-  // Órdenes de trabajo
-  getOrdenesTrabajo: async () => {
-    return (window as any).electronAPI?.getOrdenesTrabajo ? await (window as any).electronAPI.getOrdenesTrabajo() : [];
-  },
-  createOrdenTrabajo: async (orden: any) => {
-    return (window as any).electronAPI?.createOrdenTrabajo ? await (window as any).electronAPI.createOrdenTrabajo(orden) : { success: true };
-  },
+    // 1) Método expuesto directamente (recomendado)
+    if (typeof api[methodName] === 'function') {
+      try {
+        const res = await api[methodName]();
+        return Array.isArray(res) ? res : (res ? [res] : []);
+      } catch (err) {
+        console.error(`electronAPI.${methodName} threw:`, err);
+        return [];
+      }
+    }
 
-  // Áreas de empresa
-  getAreasEmpresa: async () => {
-    return (window as any).electronAPI?.getAreasEmpresa ? await (window as any).electronAPI.getAreasEmpresa() : [];
-  },
-  createAreaEmpresa: async (area: any) => {
-    return (window as any).electronAPI?.createAreaEmpresa ? await (window as any).electronAPI.createAreaEmpresa(area) : { success: true };
-  },
+    // 2) Algunas preloads exponen un invoke genérico (por ejemplo api.invoke(channel))
+    if (ipcChannelFallback && typeof api.invoke === 'function') {
+      try {
+        const res = await api.invoke(ipcChannelFallback);
+        return Array.isArray(res) ? res : (res ? [res] : []);
+      } catch (err) {
+        console.error(`electronAPI.invoke(${ipcChannelFallback}) threw:`, err);
+        return [];
+      }
+    }
 
-  // TECNICOS
-  getTecnicos: async () => {
-    return (window as any).electronAPI?.getTecnicos ? await (window as any).electronAPI.getTecnicos() : [];
-  },
-  createTecnico: async (tecnico: any) => {
-    return (window as any).electronAPI?.createTecnico ? await (window as any).electronAPI.createTecnico(tecnico) : { success: true };
-  },
-  updateTecnico: async (id: string, changes: any) => {
-    return (window as any).electronAPI?.updateTecnico ? await (window as any).electronAPI.updateTecnico(id, changes) : { success: true };
-  },
-  deleteTecnico: async (id: string) => {
-    return (window as any).electronAPI?.deleteTecnico ? await (window as any).electronAPI.deleteTecnico(id) : { success: true };
-  },
+    // 3) Si no hay nada que llamar, devolver array vacío
+    return [];
+  } catch (err) {
+    console.error('callElectronMethod unexpected error', err);
+    return [];
+  }
+}
 
-  // EMPRESA (configuración)
-  getEmpresa: async () => {
-    return (window as any).electronAPI?.getEmpresa ? await (window as any).electronAPI.getEmpresa() : null;
-  },
-  upsertEmpresa: async (empresa: any) => {
-    return (window as any).electronAPI?.upsertEmpresa ? await (window as any).electronAPI.upsertEmpresa(empresa) : { success: true };
-  },
+/* ===========================
+   Exported functions (public)
+   =========================== */
 
-  // initializeSampleData (no-op para arrancar limpio)
-  initializeSampleData: async () => {
-    return { success: true };
-  },
+/**
+ * Devuelve la lista de mantenimientos.
+ * Preload recommended name: window.electronAPI.getMantenimientos
+ * IPC channel fallback: 'get-mantenimientos'
+ */
+export async function getMantenimientos(): Promise<AnyObj[]> {
+  return callElectronMethod('getMantenimientos', 'get-mantenimientos');
+}
+
+/**
+ * Devuelve la lista de alertas.
+ * Preload recommended name: window.electronAPI.getAlertas
+ * IPC channel fallback: 'get-alertas'
+ */
+export async function getAlertas(): Promise<AnyObj[]> {
+  return callElectronMethod('getAlertas', 'get-alertas');
+}
+
+/**
+ * Devuelve la lista de órdenes de trabajo.
+ * Preload recommended name: window.electronAPI.getOrdenesTrabajo
+ * IPC channel fallback: 'get-ordenes-trabajo'
+ */
+export async function getOrdenesTrabajo(): Promise<AnyObj[]> {
+  return callElectronMethod('getOrdenesTrabajo', 'get-ordenes-trabajo');
+}
+
+/**
+ * Devuelve la lista de costos.
+ * Preload recommended name: window.electronAPI.getCostos
+ * IPC channel fallback: 'get-costos'
+ */
+export async function getCostos(): Promise<AnyObj[]> {
+  return callElectronMethod('getCostos', 'get-costos');
+}
+
+/* Export por defecto opcional */
+export default {
+  getMantenimientos,
+  getAlertas,
+  getOrdenesTrabajo,
+  getCostos,
 };

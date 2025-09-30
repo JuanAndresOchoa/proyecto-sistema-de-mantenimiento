@@ -39,10 +39,6 @@ interface Empresa {
   ruc: string
 }
 
-/**
- * Interfaz mínima del contexto que usas.
- * Ajusta los tipos de retorno/argumentos según tu implementación real si hace falta.
- */
 interface AppContext {
   areasEmpresa?: Area[]
   crearAreaEmpresa?: (area: Partial<Area>) => Promise<any>
@@ -62,13 +58,13 @@ export function ConfiguracionDashboard() {
   // Tipamos el contexto en vez de usar `any`
   const app = useApp() as AppContext
 
-  // Areas (ahora correctamente tipadas)
+  // Fuente de verdad para áreas: directamente del contexto
   const areasEmpresa: Area[] = app?.areasEmpresa ?? []
   const crearAreaEmpresa = app?.crearAreaEmpresa
   const actualizarAreaEmpresa = app?.actualizarAreaEmpresa
   const eliminarAreaEmpresa = app?.eliminarAreaEmpresa
 
-  // Técnicos
+  // Técnicos (sincronizamos con contexto pero mantenemos estado local para la UI)
   const contextoTecnicos: Tecnico[] = app?.tecnicos ?? []
   const crearTecnicoContext = app?.crearTecnico
   const actualizarTecnicoContext = app?.actualizarTecnico
@@ -78,7 +74,7 @@ export function ConfiguracionDashboard() {
   const empresaContext = app?.empresa ?? null
   const actualizarEmpresaContext = app?.actualizarEmpresa
 
-  // Estado local
+  // Estado local (formularios / lista de técnicos para UI)
   const [empresa, setEmpresa] = useState<Empresa>({
     nombre: "",
     direccion: "",
@@ -110,7 +106,7 @@ export function ConfiguracionDashboard() {
     activa: true,
   })
 
-  // Cargar datos desde contexto al montar (si existen)
+  // Sincronizar empresa y técnicos con el contexto cuando cambien
   useEffect(() => {
     if (empresaContext) {
       setEmpresa({
@@ -124,11 +120,7 @@ export function ConfiguracionDashboard() {
   }, [empresaContext])
 
   useEffect(() => {
-    if (Array.isArray(contextoTecnicos) && contextoTecnicos.length > 0) {
-      setTecnicos(contextoTecnicos.map((t) => ({ ...t })))
-    } else {
-      setTecnicos([]) // arranque limpio si no hay técnicos en contexto
-    }
+    setTecnicos(Array.isArray(contextoTecnicos) ? contextoTecnicos.map((t) => ({ ...t })) : [])
   }, [contextoTecnicos])
 
   // Contadores
@@ -171,7 +163,7 @@ export function ConfiguracionDashboard() {
     }
   }
 
-  // Técnicos: agregar / editar / eliminar (usa contexto si existe) - ahora con fallback optimista/local
+  // Técnicos: agregar / editar / eliminar (usa contexto si existe)
   const agregarTecnico = async () => {
     if (!nuevoTecnico.nombre || !nuevoTecnico.cargo) return
     const tecnico: Tecnico = {
@@ -187,11 +179,9 @@ export function ConfiguracionDashboard() {
     try {
       if (typeof crearTecnicoContext === "function") {
         const res = await Promise.resolve(crearTecnicoContext(tecnico))
-        // Si el provider devuelve el técnico (con id definitivo), añádelo; si no, haz fallback
         const tecnicoFinal = (res && typeof res === "object") ? (res as Tecnico) : tecnico
         setTecnicos((prev) => (prev.some((t) => t.id === tecnicoFinal.id) ? prev : [...prev, tecnicoFinal]))
       } else {
-        // Sin provider: actualizamos localmente
         setTecnicos((prev) => [...prev, tecnico])
       }
       cancelarFormTecnico()
@@ -239,7 +229,6 @@ export function ConfiguracionDashboard() {
       if (typeof eliminarTecnicoContext === "function") {
         await Promise.resolve(eliminarTecnicoContext(id))
       }
-      // En ambos casos (contexto o no) eliminamos del estado local para reflejar la UI inmediatamente
       setTecnicos((prev) => prev.filter((t) => t.id !== id))
     } catch (err) {
       console.error("Error eliminando técnico:", err)
@@ -269,7 +258,7 @@ export function ConfiguracionDashboard() {
     setNuevoTecnico({ nombre: "", cargo: "", especialidad: "", telefono: "", email: "", activo: true })
   }
 
-  // Áreas: agregar / editar / eliminar (ya usabas el contexto; lo mantenemos seguro)
+  // Áreas: agregar / editar / eliminar (usamos siempre la fuente de verdad del provider)
   const agregarArea = async () => {
     if (!nuevaArea.nombre || !nuevaArea.responsable) return
     try {
@@ -282,6 +271,8 @@ export function ConfiguracionDashboard() {
             activa: nuevaArea.activa,
           })
         )
+      } else {
+        console.warn("crearAreaEmpresa no definido en provider — cambios no persistirán")
       }
       setNuevaArea({ nombre: "", descripcion: "", responsable: "", activa: true })
       setMostrarFormArea(false)
@@ -314,6 +305,8 @@ export function ConfiguracionDashboard() {
             activa: nuevaArea.activa,
           })
         )
+      } else {
+        console.warn("actualizarAreaEmpresa no definido en provider — cambios no persistirán")
       }
       cancelarFormArea()
     } catch (err) {
@@ -325,6 +318,8 @@ export function ConfiguracionDashboard() {
     try {
       if (typeof eliminarAreaEmpresa === "function") {
         await Promise.resolve(eliminarAreaEmpresa(id))
+      } else {
+        console.warn("eliminarAreaEmpresa no definido en provider — cambios no persistirán")
       }
     } catch (err) {
       console.error("Error eliminando área:", err)
@@ -337,6 +332,8 @@ export function ConfiguracionDashboard() {
     try {
       if (typeof actualizarAreaEmpresa === "function") {
         await Promise.resolve(actualizarAreaEmpresa(id, { activa: !area.activa }))
+      } else {
+        console.warn("actualizarAreaEmpresa no definido en provider — toggle no persistente")
       }
     } catch (err) {
       console.error("Error toggling área:", err)
